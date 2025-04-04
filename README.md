@@ -6,7 +6,9 @@ TO SETUP A RUNNING ENVIRONMENT USING DOCKER
 ------------------------------
 1. clone the project
 2.DOCKER BUILD
+
 `docker build -t proxy-server:latest .`
+
 3.By default, Docker containers don’t share localhost unless they are on the same network.Create a custom docker network if not already created, make sure to run both in same network.
   docker network create proxy-network
 4.Run both containers in same network exposing required ports
