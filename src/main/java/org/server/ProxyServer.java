@@ -71,6 +71,7 @@ class ProxyServer {
                 String[] headerTokens = headerLine.split(": ", 2);
                 if (headerTokens.length == 2) {
                     conn.setRequestProperty(headerTokens[0], headerTokens[1]);
+                    conn.setRequestProperty("Accept-Encoding", "identity");
                 }
             }
 
