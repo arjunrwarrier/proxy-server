@@ -6,19 +6,36 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 class ProxyServer {
     private static final int SERVER_PORT = 9090;
     private static final Logger logger = LoggerFactory.getLogger(ProxyServer.class);
+    private static final BlockingQueue<Socket> requestQueue = new LinkedBlockingQueue<>();
 
     public static void startServer() {
-        try (ServerSocket serverSocket = new ServerSocket(SERVER_PORT)) {
+        try (ServerSocket serverSocket = new ServerSocket(SERVER_PORT, 50, InetAddress.getByName("0.0.0.0"))) {
             logger.info("Proxy Server started on port " + SERVER_PORT);
+            // Start a single handler thread for sequential processing
+            new Thread(() -> {
+                while (true) {
+                    try {
+                        logger.info("SERVER QUEUESIZE: {}", requestQueue.size());
+                        Socket clientSocket = requestQueue.take();
+                        handleClient(clientSocket);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }, "RequestHandlerThread").start();
+            // Main accept loop
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                new Thread(() -> handleClient(clientSocket)).start();
+                requestQueue.put(clientSocket);  // Add to queue
             }
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             e.printStackTrace();
             logger.error("Exception in startServer {}", e.getMessage());
         }
@@ -40,13 +57,12 @@ class ProxyServer {
             String method = tokens[0];
             String target = tokens[1];
 
-            if (method.equals("CONNECT")) {
-                logger.info("In HTTPS");
-                handleConnect(target, out, clientSocket);
-            } else {
-                logger.info("In HTTP");
-                forwardHttpRequest(requestLine, in, out);
+            if (method.equalsIgnoreCase("CONNECT")) {
+                logger.info("Received HTTPS CONNECT request. Not supported. Closing connection.");
             }
+            logger.info("In HTTP");
+            forwardHttpRequest(requestLine, in, out);
+
         } catch (IOException e) {
             e.printStackTrace();
             logger.error("Exception in handleClient {}", e.getMessage());
@@ -61,7 +77,6 @@ class ProxyServer {
             if (requestTokens.length < 2) return;
 
             URL url = new URL(requestTokens[1]);
-            logger.info("URL Recieved: {}", url);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod(requestTokens[0]);
 
@@ -71,6 +86,7 @@ class ProxyServer {
                 String[] headerTokens = headerLine.split(": ", 2);
                 if (headerTokens.length == 2) {
                     conn.setRequestProperty(headerTokens[0], headerTokens[1]);
+                    conn.setRequestProperty("Accept-Encoding", "identity");
                 }
             }
 
