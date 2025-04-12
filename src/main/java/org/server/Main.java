@@ -43,13 +43,13 @@ public class Main {
                         }
                         String[] requestTokens = requestLine.split(" ");
                         if (requestTokens.length < 2 || !requestTokens[0].equals("GET")) {
-                            logger.error("Invalid request format: " + requestLine);
+                            logger.warn("Invalid request format: " + requestLine);
                             continue;
                         }
 
                         String method = requestTokens[0];
                         if (method.equalsIgnoreCase("CONNECT")) {
-                            logger.error("Received HTTPS CONNECT request. Not supported. Closing connection.");
+                            logger.warn("Received HTTPS CONNECT request. Not supported. Closing connection.");
                             continue;
                         }
                         try {
@@ -58,35 +58,64 @@ public class Main {
                             conn = (HttpURLConnection) url.openConnection();
                             conn.setRequestMethod(requestTokens[0]);
                             conn.setRequestProperty(requestTokens[0], requestTokens[1]);
+                            int responseCode = conn.getResponseCode();
+                            String responseMessage = conn.getResponseMessage();
+                            logger.info("Target response: {} {}", responseCode, responseMessage);
 
+                            out.write("HTTP/1.1 " + responseCode + " " + responseMessage + "\r\n");
 
-                            try (BufferedReader remoteIn = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-                                logger.info("Forwarding response to client");
-
-                                out.write("HTTP/1.1 " + conn.getResponseCode() + " " + conn.getResponseMessage() + "\r\n");
-                                for (String headerKey : conn.getHeaderFields().keySet()) {
-                                    if (headerKey != null) {
-                                        for (String headerValue : conn.getHeaderFields().get(headerKey)) {
-                                            out.write(headerKey + ": " + headerValue + "\r\n");
-                                        }
+                            for (String headerKey : conn.getHeaderFields().keySet()) {
+                                if (headerKey != null) {
+                                    for (String headerValue : conn.getHeaderFields().get(headerKey)) {
+                                        out.write(headerKey + ": " + headerValue + "\r\n");
                                     }
                                 }
-                                out.write("\r\n");
+                            }
+                            out.write("\r\n");
+                            out.flush();
 
-
-                                String line;
-                                while ((line = remoteIn.readLine()) != null) {
-                                    out.write(line + "\r\n");
+                            InputStream responseStream = null;
+                            try {
+                                if (responseCode >= 400) {
+                                    responseStream = conn.getErrorStream();
+                                    logger.warn("returned error code {}", responseCode);
+                                } else {
+                                    responseStream = conn.getInputStream();
                                 }
-                                out.write("END_OF_RESPONSE\r\n");
-                                out.flush();
-                                logger.info("Sended END_OF_RESPONSE to client ");
-                            } catch (IOException e) {
-                                logger.info("Exception in innerloop: " + e.getMessage());
-                                out.write("END_OF_RESPONSE\r\n");
+
+                                if (responseStream != null) {
+                                    try (BufferedReader remoteIn = new BufferedReader(new InputStreamReader(responseStream))) {
+                                        String line;
+                                        while ((line = remoteIn.readLine()) != null) {
+                                            out.write(line + "\r\n");
+                                        }
+                                    }
+                                } else {
+                                    logger.info("No response body {}", responseCode);
+                                }
+
+                            } catch (IOException streamEx) {
+                                logger.error("Error reading the response body {} {} {}", url, responseCode, streamEx.getMessage());
                             }
                         } catch (MalformedURLException e) {
                             logger.error("Incorrect url {}", e.getMessage());
+                            try {
+                                out.write("HTTP/1.1 400 Bad Request\r\n");
+                                out.write("Content-Type: text/plain\r\n");
+                                out.write("Connection: close\r\n");
+                                out.write("\r\n");
+                                out.write("Malformed URL requested.\r\n");
+                            } catch (IOException writeEx) {
+                                logger.error("Error writing Bad Request response back to client proxy: {}", writeEx.getMessage());
+                            }
+                        }   finally {
+                            try {
+                                out.write("END_OF_RESPONSE\r\n");
+                                out.flush();
+                                logger.info("Sent END_OF_RESPONSE to client proxy for request: {}", requestLine);
+                            } catch (IOException finalWriteEx) {
+                                logger.error("Error sending END_OF_RESPONSE marker to client proxy: {}", finalWriteEx.getMessage());
+                            }
                         }
                     }
 
@@ -97,7 +126,7 @@ public class Main {
                         if (in != null) in.close();
                         if (out != null) out.close();
                         if (socket != null && !socket.isClosed()) socket.close();
-                        logger.info("Connection closed for {}", (socket != null ? socket.getInetAddress().getHostAddress() : "unknown"));
+                        logger.error("Connection closed for {}", (socket != null ? socket.getInetAddress().getHostAddress() : "unknown"));
                     } catch (IOException e) {
                         logger.error("Error closing socket or streams: {}", e.getMessage());
                     }
