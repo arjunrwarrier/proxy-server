@@ -42,16 +42,12 @@ public class Main {
                             break;
                         }
                         String[] requestTokens = requestLine.split(" ");
-                        if (requestTokens.length < 2 || !requestTokens[0].equals("GET")) {
+                        String method = requestTokens[0];
+                        if (requestTokens.length < 3 || method.equalsIgnoreCase("CONNECT") || !method.matches("GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH")) {
                             logger.warn("Invalid request format: " + requestLine);
                             continue;
                         }
 
-                        String method = requestTokens[0];
-                        if (method.equalsIgnoreCase("CONNECT")) {
-                            logger.warn("Received HTTPS CONNECT request. Not supported. Closing connection.");
-                            continue;
-                        }
                         try {
 
                             url = new URL(requestTokens[1]);
