@@ -75,6 +75,10 @@ public class Main {
                                 if (responseCode >= 400) {
                                     responseStream = conn.getErrorStream();
                                     logger.warn("returned error code {}", responseCode);
+                                    logger.info("Sent END_OF_RESPONSE to client proxy for request: {}", requestLine);
+                                    out.write("END_OF_RESPONSE\r\n");
+                                    out.flush();
+                                    continue;
                                 } else {
                                     responseStream = conn.getInputStream();
                                 }
