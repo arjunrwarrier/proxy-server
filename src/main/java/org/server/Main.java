@@ -74,9 +74,7 @@ public class Main {
                             try {
                                 if (responseCode >= 400) {
                                     responseStream = conn.getErrorStream();
-                                    logger.warn("returned error code {}", responseCode);
-                                    logger.info("Sent END_OF_RESPONSE to client proxy for request: {}", requestLine);
-                                    out.write("END_OF_RESPONSE\r\n");
+                                    logger.warn("returned error code {} for request: {}", responseCode,requestLine);
                                     out.flush();
                                     continue;
                                 } else {
@@ -110,9 +108,8 @@ public class Main {
                             }
                         }   finally {
                             try {
-                                out.write("END_OF_RESPONSE\r\n");
                                 out.flush();
-                                logger.info("Sent END_OF_RESPONSE to client proxy for request: {}", requestLine);
+                                logger.info("Forwarding to client proxy for request: {}", requestLine);
                             } catch (IOException finalWriteEx) {
                                 logger.error("Error sending END_OF_RESPONSE marker to client proxy: {}", finalWriteEx.getMessage());
                             }
